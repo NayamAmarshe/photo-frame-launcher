@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nav_desc">Shows a small Back, Home and Recent apps bar on the photo frame. It does not read anything on the screen.</string>
+</resources>

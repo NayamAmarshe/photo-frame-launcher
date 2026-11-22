@@ -1,0 +1,17 @@
+/* Phone pages: one flat, neutral glass look. No colours, no gradients. */
+:root { --bg: #14161b; --glass: rgba(255,255,255,.08); --glass2: rgba(255,255,255,.16); --glass3: rgba(255,255,255,.28);
+  --text: #ffffff; --dim: rgba(255,255,255,.62); --card: rgba(255,255,255,.08); --card2: rgba(255,255,255,.16);
+  --accent: #ffffff; --ok: #ffffff; --bad: #ffffff; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+*, *:focus, *:focus-visible, *:active { outline: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--text); min-height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.wrap { max-width: 560px; margin: 0 auto; padding: 22px 18px calc(40px + env(safe-area-inset-bottom)); }
+.top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; min-height: 48px; }
+.top h1 { margin: 0; font-size: 30px; font-weight: 300; letter-spacing: .2px; }
+.homebtn { color: var(--text); text-decoration: none; background: var(--glass); padding: 11px 18px; border-radius: 999px;
+  font-size: 16px; font-weight: 600; }
+.sub { font-size: 18px; line-height: 1.45; color: var(--dim); margin: 0 0 22px; }
+.foot { margin-top: 38px; text-align: center; font-size: 15px; color: var(--dim); }
+.foot b { color: var(--text); font-weight: 600; }
+button { font-family: inherit; color: inherit; }

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161b">
+<title>Send photos</title>
+<link rel="stylesheet" href="/static/ui.css">
+<style>
+  .pick { display: flex; align-items: center; justify-content: center; width: 100%; height: 66px; border: 0;
+    border-radius: 999px; background: var(--glass3); color: #fff; font-size: 20px; font-weight: 600; cursor: pointer; }
+  .pick:active { background: var(--glass2); }
+  .pick svg { width: 26px; height: 26px; margin-right: 10px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  input[type=file] { display: none; }
+  .steps { margin: 26px 0 0; padding: 0; list-style: none; }
+  .steps li { display: flex; align-items: center; background: var(--glass); border-radius: 999px; padding: 12px 18px 12px 12px;
+    margin-bottom: 10px; font-size: 17px; color: var(--dim); }
+  .steps b { flex: none; width: 30px; height: 30px; border-radius: 15px; background: var(--glass2); color: #fff;
+    display: flex; align-items: center; justify-content: center; margin-right: 14px; font-size: 15px; }
+  #banner { display: none; margin-top: 20px; padding: 16px 20px; border-radius: 24px; font-size: 18px; font-weight: 600; line-height: 1.35; background: var(--glass); }
+  #banner.working, #banner.good, #banner.warn { display: block; }
+  #overall { height: 6px; background: var(--glass2); border-radius: 3px; margin-top: 12px; overflow: hidden; }
+  #overall i { display: block; height: 100%; width: 0; background: #fff; transition: width .2s; }
+  #grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-gap: 8px; margin-top: 18px; }
+  .tile { position: relative; border-radius: 18px; overflow: hidden; background: var(--glass); aspect-ratio: 1 / 1; }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile .shade { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(20,22,27,.55);
+    display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; }
+  .tile.done .shade { background: rgba(20,22,27,0); }
+  .tile .badge { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; border-radius: 13px;
+    display: none; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; }
+  .tile.done .badge { display: flex; background: #fff; color: #14161b; }
+  .tile.fail .badge { display: flex; background: #fff; color: #14161b; }
+  .tile.fail .shade { background: rgba(20,22,27,.7); }
+  .tile.fail .shade span, .tile.done .shade span { display: none; }
+  .tile .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.2); }
+  .tile .bar i { display: block; height: 100%; width: 0; background: #fff; }
+  .tile.done .bar, .tile.fail .bar { display: none; }
+  .tabs { display: flex; background: rgba(0,0,0,.25); border-radius: 999px; padding: 4px; margin: 0 0 8px; }
+  .tabs button { flex: 1; height: 46px; border: 0; background: transparent; color: var(--dim); font-size: 17px; font-weight: 600; border-radius: 999px; }
+  .tabs button.on { background: var(--glass3); color: #fff; }
+  h1.page { font-size: 30px; font-weight: 300; margin: 22px 0 8px; }
+  #tabManage { display: none; }
+  #toast { position: fixed; left: 50%; top: 18px; transform: translate(-50%, -200%); z-index: 100; background: #2a2d35;
+    padding: 12px 20px; border-radius: 999px; font-size: 16px; font-weight: 600; transition: transform .25s ease; max-width: 90%; text-align: center; }
+  #toast.show { transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>Photos</h1><a class="homebtn" href="/dashboard">Home</a></div>
+
+  <div class="tabs">
+    <button id="tabBtnAdd" class="on">Add photos</button>
+    <button id="tabBtnManage">Manage</button>
+  </div>
+
+  <div id="tabAdd">
+  <h1 class="page">Send photos to the frame</h1>
+  <p class="sub">Pick pictures from your phone. They will show up on the frame in a few seconds.</p>
+
+  <label class="pick" for="pick">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg>
+    <span id="pickLabel">Choose photos</span>
+  </label>
+  <input id="pick" type="file" accept="image/*" multiple>
+
+  <div id="banner"><div id="bannerText"></div><div id="overall"><i></i></div></div>
+  <div id="grid"></div>
+
+  <ol class="steps" id="steps">
+    <li><b>1</b>Tap Choose photos</li>
+    <li><b>2</b>Pick as many photos as you like</li>
+    <li><b>3</b>Wait for the checkmarks</li>
+  </ol>
+  </div>
+
+  <div id="tabManage">
+    <h1 class="page">Your photos</h1>
+    <p class="sub">Arrange the order, or remove photos you don&rsquo;t want on the frame.</p>
+    <div id="mgr"></div>
+  </div>
+
+  <div class="foot"><b>Made by Nayam Amarshe</b> &#10084;&#65039;</div>
+</div>
+
+<div id="toast"></div>
+<script src="/static/manage.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var input = $('pick'), grid = $('grid'), banner = $('banner');
+  var urls = [];
+
+  // ---- two tabs: Add photos / Manage ----
+  var mgr = null, toastTimer = null;
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  function showTab(name) {
+    var manage = name === 'manage';
+    $('tabAdd').style.display = manage ? 'none' : 'block';
+    $('tabManage').style.display = manage ? 'block' : 'none';
+    $('tabBtnAdd').classList.toggle('on', !manage);
+    $('tabBtnManage').classList.toggle('on', manage);
+    if (manage) {
+      if (!mgr) mgr = PhotoManager.mount($('mgr'), { min: 100, toast: toast });
+      else mgr.refresh();
+    }
+    window.scrollTo(0, 0);
+  }
+  $('tabBtnAdd').addEventListener('click', function () { showTab('add'); });
+  $('tabBtnManage').addEventListener('click', function () { showTab('manage'); });
+
+  function upload(file, tile, progress, next) {
+    var x = new XMLHttpRequest();
+    x.open('POST', '/api/upload');
+    x.upload.onprogress = function (e) {
+      if (!e.lengthComputable) return;
+      var p = e.loaded / e.total;
+      tile.querySelector('.bar i').style.width = Math.round(p * 100) + '%';
+      tile.querySelector('.shade span').textContent = Math.round(p * 100) + '%';
+      progress(p);
+    };
+    x.onload = function () {
+      var ok = x.status === 200;
+      tile.className = 'tile ' + (ok ? 'done' : 'fail');
+      tile.querySelector('.badge').textContent = ok ? '✓' : '!';
+      next(ok);
+    };
+    x.onerror = function () {
+      tile.className = 'tile fail';
+      tile.querySelector('.badge').textContent = '!';
+      next(false);
+    };
+    x.send(file);
+  }
+
+  input.addEventListener('change', function () {
+    var files = Array.prototype.slice.call(input.files);
+    if (!files.length) return;
+    urls.forEach(function (u) { URL.revokeObjectURL(u); });
+    urls = [];
+    grid.innerHTML = '';
+    $('steps').style.display = 'none';
+
+    var tiles = files.map(function (f) {
+      var t = document.createElement('div');
+      t.className = 'tile';
+      var u = URL.createObjectURL(f);
+      urls.push(u);
+      t.innerHTML = '<img alt=""><div class="shade"><span>0%</span></div><div class="badge"></div><div class="bar"><i></i></div>';
+      t.querySelector('img').src = u;
+      grid.appendChild(t);
+      return t;
+    });
+
+    var i = 0, sent = 0;
+    banner.className = 'working';
+    function setBanner() {
+      $('bannerText').textContent = 'Sending photo ' + Math.min(i + 1, files.length) + ' of ' + files.length + '…';
+    }
+    function setOverall(p) { $('overall').firstChild.style.width = Math.round(((i + p) / files.length) * 100) + '%'; }
+
+    function step() {
+      if (i >= files.length) {
+        $('overall').firstChild.style.width = '100%';
+        if (sent === files.length) {
+          banner.className = 'good';
+          $('bannerText').textContent = 'All done! ' + sent + (sent === 1 ? ' photo is' : ' photos are') + ' on the frame ❤️';
+        } else {
+          banner.className = 'warn';
+          $('bannerText').textContent = sent + ' of ' + files.length + ' sent. Tap the button to try again.';
+        }
+        $('pickLabel').textContent = 'Send more photos';
+        input.value = '';
+        return;
+      }
+      setBanner();
+      upload(files[i], tiles[i], setOverall, function (ok) { if (ok) sent++; i++; step(); });
+    }
+    step();
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Photo Frame</title>
+<style>
+  :root {
+    --panel: #16181d;
+    --card: #22252d;
+    --card2: #2c3039;
+    --text: #f5f5f6;
+    --dim: #9ba1ad;
+    --accent: #ffb454;
+    --accent-ink: #2a1a00;
+    --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  button { font-family: inherit; color: inherit; }
+
+  /* ---------- the photo stage ---------- */
+  #stage { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden;
+    background: #000; touch-action: none; }
+  .slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0; transition: opacity .8s ease-in-out, transform .8s ease-out; will-change: opacity, transform; }
+  .slide.show { opacity: 1; }
+  .slide img { position: absolute; display: block; }
+  .slide .bg { top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+  body.bg-black .slide .bg { display: none; }
+  .slide .fg { top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; }
+
+  /* ---------- clock: three looks, and the text turns dark when the photo behind it is light ---------- */
+  #clock { position: absolute; pointer-events: none; display: flex; flex-direction: column; color: #fff;
+    font-family: -apple-system, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    z-index: 3; }
+  #time, #date { color: #fff; text-shadow: 0 2px 20px rgba(0,0,0,.55), 0 0 3px rgba(0,0,0,.18); transition: color .8s ease; }
+  #time.dark, #date.dark { color: #101318; text-shadow: 0 1px 18px rgba(255,255,255,.5); }
+  #time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #time .ap { font-size: .32em; font-weight: 500; margin-left: .35em; letter-spacing: 0; }
+  #date { white-space: nowrap; }
+  /* 1. Card: a dark glass card in the corner. Easy to read on any photo. */
+  body.clock-card #clock { left: 36px; bottom: 30px; padding: 14px 28px 16px; border-radius: 30px; background: rgba(18,20,26,.45); }
+  body.clock-card #time, body.clock-card #date, body.clock-card #time.dark, body.clock-card #date.dark { color: #fff; text-shadow: none; }
+  body.clock-card #time { font-size: 56px; font-weight: 300; letter-spacing: .5px; }
+  body.clock-card #date { font-size: 20px; opacity: .85; margin-top: 2px; }
+  /* 2. Lock screen: big bold time at the top, date above it (like a phone lock screen). */
+  body.clock-lock #clock { left: 0; right: 0; top: 6%; align-items: center; text-align: center; }
+  body.clock-lock #time { font-size: 156px; font-weight: 700; letter-spacing: -5px; line-height: 1; opacity: .93; }
+  body.clock-lock #time .ap { display: none; }
+  body.clock-lock #date { order: -1; font-size: 28px; font-weight: 500; letter-spacing: .3px; opacity: .92; margin-bottom: -2px; }
+  /* 3. Stacked: huge hour over minutes on the left, the minutes a little softer (like Xiaomi HyperOS). */
+  body.clock-stack #clock { left: 54px; top: 50%; -webkit-transform: translateY(-50%); transform: translateY(-50%); }
+  body.clock-stack #time { display: flex; flex-direction: column; font-size: 196px; font-weight: 600; letter-spacing: -8px; line-height: .86; }
+  body.clock-stack #time .sep, body.clock-stack #time .ap { display: none; }
+  body.clock-stack #time .m { opacity: .55; }
+  body.clock-stack #date { order: -1; font-size: 26px; font-weight: 500; margin: 0 0 14px 8px; opacity: .92; }
+  body.no-clock #clock { display: none; }
+
+  /* ---------- empty screen with QR ---------- */
+  #empty { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: none;
+    flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    padding: 24px; background: radial-gradient(circle at 50% 35%, #2a2f3a, #0b0c10 70%); }
+  #empty h1 { font-size: 44px; font-weight: 600; margin: 0 0 8px; }
+  #empty p { font-size: 24px; margin: 0 0 24px; color: var(--dim); }
+  .qrbox { background: #fff; border-radius: 24px; padding: 18px; line-height: 0; }
+  #empty .url { margin-top: 18px; font-size: 20px; color: var(--accent); letter-spacing: .3px; }
+
+  /* ---------- settings panel ---------- */
+  #panel { position: absolute; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100%;
+    background: var(--panel); transform: translateX(105%);
+    overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 22px 22px 28px;
+    box-shadow: -10px 0 40px rgba(0,0,0,.5); z-index: 10; }
+  #panel.open { transform: translateX(0); }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .head h2 { margin: 0; font-size: 28px; font-weight: 600; }
+  .iconbtn { width: 48px; height: 48px; border-radius: 24px; border: 0; background: var(--card);
+    font-size: 26px; line-height: 48px; text-align: center; padding: 0; }
+  .count { color: var(--dim); font-size: 17px; margin: 0 0 18px; }
+  .sec { font-size: 22px; font-weight: 700; margin: 34px 0 4px; padding-top: 22px; border-top: 1px solid var(--card2); }
+  .sec + .label { margin-top: 12px; }
+  #panel .count + .sec { margin-top: 12px; border-top: 0; padding-top: 0; }
+  .label { font-size: 14px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--dim);
+    margin: 22px 0 10px; font-weight: 600; }
+  .seg { display: flex; background: var(--card); border-radius: 16px; padding: 4px; }
+  .seg button { flex: 1; border: 0; background: transparent; font-size: 19px; font-weight: 600;
+    padding: 0 6px; height: 52px; border-radius: 12px; color: var(--dim); }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); }
+  .row2 { display: flex; }
+  .row2 > * + * { margin-left: 10px; }
+  .btn { flex: 1; height: 56px; border: 0; border-radius: 16px; background: var(--card);
+    font-size: 19px; font-weight: 600; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.danger { color: var(--danger); }
+  .btn.confirm { background: var(--danger); color: #fff; }
+  .switchrow { display: flex; align-items: center; justify-content: space-between; background: var(--card);
+    border-radius: 16px; padding: 0 16px; height: 60px; font-size: 19px; font-weight: 600; }
+  .switch { width: 58px; height: 34px; border-radius: 17px; background: var(--card2); position: relative;
+    border: 0; padding: 0; transition: background .2s; }
+  .switch::after { content: ""; position: absolute; top: 4px; left: 4px; width: 26px; height: 26px;
+    border-radius: 13px; background: #fff; transition: transform .2s; }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { transform: translateX(24px); }
+  .addbox { display: flex; align-items: center; background: var(--card); border-radius: 16px;
+    padding: 14px; }
+  .addbox .qrbox { padding: 8px; border-radius: 14px; flex: none; margin-right: 16px; }
+  .addbox .txt { font-size: 17px; color: var(--dim); line-height: 1.35; }
+  .addbox .txt b { display: block; color: var(--text); font-size: 19px; margin-bottom: 4px; }
+
+  /* ---------- crop bar ---------- */
+  #cropbar { position: absolute; left: 50%; bottom: 28px; transform: translate(-50%, 160%);
+    width: 760px; max-width: calc(100% - 32px); background: rgba(22,24,29,.96); border-radius: 22px;
+    padding: 14px 18px 16px; z-index: 12;
+    box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+  #cropbar.open { transform: translate(-50%, 0); }
+  #cropbar .hint { text-align: center; color: var(--dim); font-size: 17px; margin-bottom: 10px; }
+  #cropbar .zoomrow { display: flex; align-items: center; margin-bottom: 12px;
+    font-size: 24px; color: var(--dim); }
+  #cropbar .zoomrow > * + * { margin-left: 14px; }
+  #cropbar input[type=range] { flex: 1; height: 36px; }
+  .cropframe { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none;
+    border: 3px solid var(--accent); border-radius: 4px; display: none; z-index: 11; }
+  body.cropping .cropframe { display: block; }
+
+  /* ---------- quick tools + developer + credits ---------- */
+  .tools { display: flex; flex-wrap: wrap; margin: 14px -5px 0; }
+  .tools button { flex: 1 1 28%; margin: 0 5px 10px; border: 0; background: var(--card); border-radius: 18px;
+    padding: 14px 4px 12px; font-size: 16px; font-weight: 600; display: flex; flex-direction: column;
+    align-items: center; white-space: nowrap; }
+  .tools svg { width: 30px; height: 30px; margin-bottom: 8px; fill: none; stroke: var(--accent);
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .addbox { cursor: pointer; }
+  .footer { margin: 34px 0 4px; text-align: center; color: var(--dim); font-size: 16px; line-height: 1.6; }
+  .footer b { color: var(--text); font-weight: 600; }
+  .pill { height: 52px; border: 0; border-radius: 26px; background: var(--card); padding: 0 24px;
+    font-size: 19px; font-weight: 600; }
+
+  /* ---------- full-screen pop-ups: apps and big QR ---------- */
+  .overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: none; z-index: 30; }
+  .overlay.open { display: block; }
+  #apps { background: #0d0e12; overflow-y: auto; padding: 26px 34px 34px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+  .topbar h2 { margin: 0; font-size: 34px; font-weight: 600; }
+  .appgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); grid-gap: 16px; }
+  .app { background: var(--card); border: 0; border-radius: 22px; padding: 18px 6px 14px; text-align: center; }
+  .app img { width: 64px; height: 64px; display: block; margin: 0 auto 10px; }
+  .app span { display: block; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; padding: 0 4px; }
+  #qrfull { background: radial-gradient(circle at 50% 40%, #2a2f3a, #0a0b0e 75%); text-align: center; }
+  #qrfull .center { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex;
+    flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+  #qrfull h1 { font-size: 40px; margin: 0 0 8px; font-weight: 600; }
+  #qrfull p { font-size: 22px; color: var(--dim); margin: 0 0 22px; }
+  #qrfull .qrbox { padding: 22px; border-radius: 30px; }
+  #qrfull .url { margin-top: 20px; font-size: 24px; color: var(--accent); }
+  #qrfull .backbtn { position: absolute; top: 22px; left: 22px; z-index: 2; }
+  #emptySettings { margin-top: 26px; }
+
+  /* ---------- Bluetooth screen ---------- */
+  #bt { background: #0d0e12; overflow-y: auto; padding: 26px 34px 34px; }
+  .btrow { display: flex; align-items: center; background: var(--card); border-radius: 18px; margin-bottom: 10px;
+    height: 72px; padding: 0 10px 0 18px; border: 2px solid transparent; }
+  .btrow.on { border-color: var(--accent); }
+  .btrow .main { flex: 1; min-width: 0; display: flex; align-items: center; height: 100%; border: 0;
+    background: transparent; color: var(--text); text-align: left; padding: 0; font-family: inherit; }
+  .btrow .main svg { width: 28px; height: 28px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; margin-right: 16px; }
+  .btrow .name { flex: 1; min-width: 0; font-size: 21px; font-weight: 600; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .btrow .tag { font-size: 14px; color: var(--accent); font-weight: 700; margin: 0 8px 0 12px; }
+  .btrow .small { border: 0; background: var(--card2); color: var(--text); border-radius: 14px; height: 46px;
+    padding: 0 16px; font-size: 16px; font-weight: 700; margin-left: 8px; font-family: inherit; }
+  .btsect { font-size: 14px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--dim);
+    margin: 22px 0 10px; font-weight: 600; }
+
+  /* ---------- sliders ---------- */
+  input.slider { -webkit-appearance: none; appearance: none; width: 100%; height: 40px; background: transparent;
+    margin: 0; outline: 0; }
+  input.slider::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: var(--card2); }
+  input.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 32px; height: 32px; border-radius: 16px;
+    background: var(--accent); margin-top: -12px; border: 0; }
+  .label span { color: var(--text); margin-left: 8px; letter-spacing: 0; text-transform: none; font-size: 15px; }
+  #cropbar input.slider { flex: 1; }
+
+  /* ---------- Manage photos screen ---------- */
+  #manage { background: #0d0e12; overflow-y: auto; padding: 26px 34px 34px; }
+
+  /* ---------- Wi-Fi screen ---------- */
+  #wifi { background: #0d0e12; overflow-y: auto; padding: 26px 34px 34px; }
+  .topbar .right { display: flex; align-items: center; }
+  .topbar .right > * + * { margin-left: 16px; }
+  .wstatus { background: var(--card); border-radius: 20px; padding: 18px 20px; display: flex;
+    align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .wstatus .big { font-size: 23px; font-weight: 600; }
+  .wstatus .small { font-size: 16px; color: var(--dim); margin-top: 4px; }
+  .wstatus .pill { background: var(--card2); flex: none; margin-left: 14px; }
+  .notice { background: var(--card); border-radius: 20px; padding: 22px; text-align: center; font-size: 19px;
+    color: var(--dim); line-height: 1.45; margin-bottom: 18px; }
+  .notice .pill { background: var(--accent); color: var(--accent-ink); margin-top: 16px; }
+  .net { display: flex; align-items: center; width: 100%; border: 2px solid transparent; background: var(--card);
+    border-radius: 18px; padding: 0 18px; height: 68px; margin-bottom: 10px; text-align: left; color: var(--text); }
+  .net.on { border-color: var(--accent); }
+  .net .name { flex: 1; font-size: 21px; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; margin: 0 14px; }
+  .net .tag { font-size: 14px; color: var(--accent); font-weight: 700; margin-right: 12px; }
+  .net svg { width: 20px; height: 20px; fill: none; stroke: var(--dim); stroke-width: 2; stroke-linecap: round;
+    stroke-linejoin: round; flex: none; }
+  .sig { display: flex; align-items: flex-end; width: 30px; height: 24px; flex: none; }
+  .sig i { display: block; width: 5px; margin-right: 3px; background: var(--card2); border-radius: 2px; }
+  .sig i:nth-child(1) { height: 6px; } .sig i:nth-child(2) { height: 11px; }
+  .sig i:nth-child(3) { height: 17px; } .sig i:nth-child(4) { height: 24px; }
+  .sig i.on { background: var(--text); }
+  #wifiPw { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: rgba(0,0,0,.65); }
+  #wifiPw.open { display: block; }
+  #wifiPw .card { position: absolute; top: 36px; left: 50%; transform: translateX(-50%); width: 560px;
+    max-width: calc(100% - 32px); background: var(--panel); border-radius: 26px; padding: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  #wifiPw h3 { margin: 0 0 6px; font-size: 26px; }
+  #wifiPw p { margin: 0 0 16px; color: var(--dim); font-size: 17px; }
+  #wifiPw .field { display: flex; align-items: center; background: var(--card); border-radius: 16px;
+    padding: 0 8px 0 16px; height: 64px; }
+  #wifiPw input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text);
+    font-size: 22px; height: 60px; }
+  #wifiPw .field button { border: 0; background: transparent; color: var(--accent); font-size: 17px;
+    font-weight: 700; height: 48px; padding: 0 14px; }
+  #wifiPw .row2 { margin-top: 18px; }
+
+  /* ---------- toast ---------- */
+  #toast { position: absolute; left: 50%; top: 28px; transform: translate(-50%, -300%); z-index: 50;
+    background: rgba(22,24,29,.96); padding: 14px 22px; border-radius: 16px; font-size: 20px;
+    transition: transform .25s ease; pointer-events: none; max-width: 90%; text-align: center; }
+  #toast { visibility: hidden; }
+  #toast.show { transform: translate(-50%, 0); visibility: visible; }
+
+  /* ---------- portrait: panel becomes a bottom sheet ---------- */
+  @media (orientation: portrait) {
+    #panel { top: auto; left: 0; right: 0; width: 100%; max-height: 82%; border-radius: 26px 26px 0 0;
+      transform: translateY(105%); box-shadow: 0 -10px 40px rgba(0,0,0,.5); }
+    #panel.open { transform: translateY(0); }
+    #nTime { font-size: 130px; }
+    #nDate { font-size: 22px; }
+    body.clock-card.music-on #mini { bottom: 136px; }     /* keep the music bar clear of the card clock */
+    body.clock-card.music-on #miniVol { bottom: 210px; }
+    body.clock-card #time { font-size: 44px; }
+    body.clock-card #clock { left: 24px; bottom: 22px; padding: 12px 22px 14px; }
+    body.clock-lock #time { font-size: 118px; letter-spacing: -4px; }
+    body.clock-lock #clock { top: 5%; }
+    body.clock-stack #clock { left: 30px; top: 11%; -webkit-transform: none; transform: none; }
+    body.clock-stack #time { font-size: 150px; letter-spacing: -6px; }
+    #empty h1 { font-size: 36px; }
+  }
+
+  /* ---------- flat glass look: neutral, see-through, no gradients, no colour accents ---------- */
+  :root { --accent: #ffffff; --accent-ink: #14161b; --danger: #ffffff; }
+  /* the pane behind the panel shows a soft blurred copy of the current photo */
+  #panelGlass { position: absolute; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100%; z-index: 9;
+    overflow: hidden; border-radius: 28px 0 0 28px; background: #15171c; pointer-events: none;
+    -webkit-transform: translate3d(105%,0,0); transform: translate3d(105%,0,0); will-change: transform;
+    transition: transform .22s ease-out; }
+  #panelGlass.open { -webkit-transform: translate3d(0,0,0); transform: translate3d(0,0,0); }
+  #panelGlass .gimg { position: absolute; top: 0; bottom: 0; right: 0; width: 100vw;
+    background-size: cover; background-position: center; background-repeat: no-repeat; }
+  #panelGlass::after { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(18,20,26,.38); }
+  #panel { background: transparent; box-shadow: none; z-index: 10; -webkit-transform: translate3d(105%,0,0); transform: translate3d(105%,0,0);
+    will-change: transform; transition: transform .22s ease-out; }
+  #panel.open { -webkit-transform: translate3d(0,0,0); transform: translate3d(0,0,0); }
+  .head h2 { font-weight: 300; font-size: 32px; }
+  .sec { font-weight: 400; font-size: 24px; border-top: 1px solid rgba(255,255,255,.18); }
+  .label, .count { color: rgba(255,255,255,.72); }
+  /* all controls are one flat translucent white */
+  .seg, .switchrow, .addbox, .tools button, .btn, .iconbtn, .pill { background: rgba(255,255,255,.14); box-shadow: none; }
+  .btn, .pill, .iconbtn { border-radius: 999px; }
+  .seg { border-radius: 999px; padding: 4px; background: rgba(0,0,0,.24); }
+  .seg button { border-radius: 999px; color: rgba(255,255,255,.75); }
+  .seg button.on { background: rgba(255,255,255,.30); color: #fff; }
+  .btn.primary { background: rgba(255,255,255,.28); color: #fff; }
+  .btn.danger { color: #fff; }
+  .btn.confirm { background: #fff; color: #14161b; }
+  .tools svg { stroke: #fff; }
+  .switch { background: rgba(0,0,0,.30); box-shadow: none; }
+  .switch::after { background: #fff; box-shadow: none; }
+  .switch.on { background: rgba(255,255,255,.85); }
+  .switch.on::after { background: #14161b; }
+  input.slider::-webkit-slider-runnable-track { background: rgba(0,0,0,.30); box-shadow: none; }
+  input.slider::-webkit-slider-thumb { background: #fff; box-shadow: none; }
+  .addbox .txt { color: rgba(255,255,255,.78); }
+  #cropbar { background: rgba(22,24,30,.85); border-radius: 28px; }
+  #empty { background: #0f1115; }
+  #miniVol { position: absolute; left: 50%; bottom: 100px; width: 440px; max-width: calc(100% - 40px); margin-left: -220px; display: none;
+    padding: 10px 22px; border-radius: 999px; background: rgba(20,22,28,.88); z-index: 8; }
+  #miniVol.show { display: flex; align-items: center; }
+  #miniVol input { flex: 1; margin: 0; }
+  #miniBoost { flex: none; margin-left: 14px; height: 40px; padding: 0 18px; border: 0; border-radius: 999px; background: rgba(255,255,255,.14); color: #fff; font-size: 16px; font-weight: 600; }
+  #miniBoost.on { background: #fff; color: #14161b; }
+  #mini { position: absolute; left: 50%; bottom: 26px; width: 560px; max-width: calc(100% - 28px); margin-left: -280px;
+    display: none; align-items: center; padding: 8px 10px; border-radius: 999px; background: rgba(20,22,28,.80); z-index: 8; }
+  @media (max-width: 600px) { #mini { margin-left: 0; left: 14px; } }
+  #mini.show { display: flex; }
+  #mini img { width: 52px; height: 52px; border-radius: 26px; object-fit: cover; background: #000; flex: none; }
+  #mini .mt { flex: 1; min-width: 0; padding: 0 14px; }
+  #mini .mt b { display: block; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #mini .mt span { display: block; font-size: 14px; color: rgba(255,255,255,.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #mini .mp { display: block; height: 3px; border-radius: 2px; background: rgba(255,255,255,.2); margin-top: 6px; overflow: hidden; }
+  #mini .mp u { display: block; height: 100%; width: 0; background: #fff; text-decoration: none; }
+  #mini button { flex: none; width: 50px; height: 50px; border: 0; border-radius: 25px; padding: 0; margin-left: 6px; background: rgba(255,255,255,.14);
+    display: flex; align-items: center; justify-content: center; }
+  #mini button svg { width: 24px; height: 24px; fill: #fff; }
+  #mini #miniPlay { background: #fff; }
+  #mini #miniPlay svg { fill: #14161b; }
+  #musicui { background: #14161b; }
+  #musicui.open { display: flex; }
+  #musicui .mu-side { width: 300px; flex: none; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; }
+  #musicui .mu-qr { margin-top: 28px; text-align: center; width: 100%; }
+  #musicui .mu-qr .qrbox { display: inline-block; padding: 12px; border-radius: 22px; }
+  #musicui .mu-qr p { font-size: 17px; color: rgba(255,255,255,.7); margin: 14px 0 6px; line-height: 1.35; }
+  #musicui .mu-qr .url { font-size: 17px; color: #fff; word-break: break-all; }
+  #muFrame { flex: 1; min-width: 0; height: 100%; border: 0; background: #14161b; }
+  @media (orientation: portrait) {
+    #musicui.open { flex-direction: column; }
+    #musicui .mu-side { width: 100%; flex-direction: row; align-items: center; padding: 14px 16px 0; }
+    #musicui .mu-qr { margin: 0 0 0 auto; width: auto; display: flex; align-items: center; }
+    #musicui .mu-qr p, #musicui .mu-qr .url { display: none; }
+    #musicui .mu-qr .qrbox { padding: 8px; border-radius: 16px; }
+  }
+  /* ---------- night: a quiet, dim clock when nobody is around ---------- */
+  #night { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000; display: none; z-index: 7;
+    flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  body.night #night { display: flex; }
+  body.night #stage, body.night #clock, body.night .cropframe { display: none; }
+  body.cropping #clock { visibility: hidden; }          /* nothing peeks out behind the crop buttons */
+  #nTime { font-size: 200px; font-weight: 200; letter-spacing: -3px; line-height: 1; color: rgba(255,255,255,.26); font-variant-numeric: tabular-nums;
+    font-family: -apple-system, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #nDate { font-size: 26px; margin-top: 8px; color: rgba(255,255,255,.18); }
+  #nightNote { font-size: 15px; line-height: 1.4; color: rgba(255,255,255,.62); margin: 10px 4px 0; }
+  @media (orientation: portrait) {
+    #panel { height: 82%; }
+    #panelGlass { top: auto; left: 0; right: 0; width: 100%; height: 82%; border-radius: 28px 28px 0 0; transform: translate3d(0,105%,0); }
+    #panelGlass.open { transform: translate3d(0,0,0); }
+    #panel { transform: translate3d(0,105%,0); }
+    #panel.open { transform: translate3d(0,0,0); }
+    #panelGlass .gimg { top: auto; right: auto; left: 0; bottom: 0; width: 100vw; height: 100vh; }
+  }
+  /* no focus rings or tap flashes anywhere */
+  *, *:focus, *:focus-visible, *:active { outline: none !important; -webkit-tap-highlight-color: transparent !important; }
+  button:focus, a:focus, input:focus, select:focus, textarea:focus, [tabindex]:focus { outline: none !important; box-shadow: none; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="slide" id="s0"><img class="bg" alt=""><img class="fg" alt=""></div>
+  <div class="slide" id="s1"><img class="bg" alt=""><img class="fg" alt=""></div>
+</div>
+
+<div id="night"><div id="nTime"></div><div id="nDate"></div></div>
+
+<div id="clock"><div id="time"><span class="h"></span><span class="sep">:</span><span class="m"></span><span class="ap"></span></div><div id="date"></div></div>
+<div class="cropframe"></div>
+
+<div id="miniVol"><input class="slider" id="miniVolSlider" type="range" min="0" max="100" step="5" value="70"><button id="miniBoost">Louder</button></div>
+<div id="mini">
+  <img id="miniImg" alt="">
+  <div class="mt"><b id="miniTitle"></b><span id="miniSub"></span><i class="mp"><u id="miniProg"></u></i></div>
+  <button id="miniVolBtn" aria-label="Volume"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9zM16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg></button>
+  <button id="miniPrev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg></button>
+  <button id="miniPlay" aria-label="Play or pause"></button>
+  <button id="miniNext" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg></button>
+  <button id="miniStop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6.4 5l12.6 12.6-1.4 1.4L5 6.4zM19 6.4 6.4 19 5 17.6 17.6 5z"/></svg></button>
+</div>
+
+
+
+<div id="empty">
+  <h1>Add your first photos</h1>
+  <p>Point your phone camera at this square. Tap it to make it bigger.</p>
+  <div class="qrbox" id="qrEmptyBox"><canvas id="qrEmpty"></canvas></div>
+  <div class="url" id="urlEmpty"></div>
+  <button class="pill" id="emptySettings">Settings</button>
+</div>
+
+<div id="panelGlass"><div class="gimg" id="gimg"></div></div>
+<div id="panel">
+  <div class="head"><h2>Settings</h2><button class="iconbtn" id="closePanel">&#x2715;</button></div>
+  <p class="count" id="count"></p>
+
+  <div class="sec">Photos</div>
+  <div class="label">Add more photos</div>
+  <div class="addbox" id="addbox">
+    <div class="qrbox"><canvas id="qrPanel"></canvas></div>
+    <div class="txt"><b>Scan with a phone</b>Tap to make the code bigger.</div>
+  </div>
+  <div class="label">Your photos</div>
+  <button class="btn primary" id="btnManage" style="width:100%">Arrange or delete photos</button>
+
+  <div class="sec">This photo</div>
+  <div class="label" id="photoFitLabel">How it fills the screen</div>
+  <div class="seg" id="photoFitSeg">
+    <button data-v="auto">Auto</button><button data-v="fit">Fit whole</button><button data-v="fill">Fill screen</button>
+  </div>
+  <div class="row2" style="margin-top:12px">
+    <button class="btn primary" id="btnCrop">Adjust crop</button>
+    <button class="btn danger" id="btnDelete">Delete</button>
+  </div>
+
+  <div class="sec">Slideshow</div>
+  <div class="label">Change photo every</div>
+  <div class="seg" data-key="interval">
+    <button data-v="10">10 sec</button><button data-v="20">20 sec</button>
+    <button data-v="60">1 min</button><button data-v="300">5 min</button>
+  </div>
+  <div class="label">Play order</div>
+  <div class="seg" data-key="play">
+    <button data-v="order">In my order</button><button data-v="shuffle">Shuffle</button>
+  </div>
+  <div class="label">Background behind photos</div>
+  <div class="seg" data-key="bg">
+    <button data-v="blur">Blurred photo</button><button data-v="black">Black</button>
+  </div>
+  <div class="switchrow" style="margin-top:22px"><span>Show clock</span><button class="switch" id="swClock"></button></div>
+  <div class="label">Clock style</div>
+  <div class="seg" data-key="clockStyle">
+    <button data-v="card">Card</button><button data-v="lock">Lock screen</button><button data-v="stack">Stacked</button>
+  </div>
+
+  <div class="sec">Photo frame</div>
+  <div class="tools" id="tools">
+    <button id="toolApps"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>Apps</button>
+    <button id="toolWifi"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1"/></svg>Wi-Fi</button>
+    <button id="toolBt"><svg viewBox="0 0 24 24"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>Bluetooth</button>
+    <button id="toolMusic" style="display:none"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Music</button>
+    <button id="toolSettings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
+  </div>
+  <div id="ovNotice" class="notice" style="display:none; margin: 10px 0 0; padding: 14px; font-size: 16px">
+    To show a "Back to Photo Frame" button on top of other apps, Android needs your OK once.<br>
+    <button class="pill" id="ovAllow" style="height: 44px; font-size: 16px">Allow</button>
+  </div>
+
+  <div class="sec">Screen</div>
+  <div class="label">Brightness <span id="brightVal"></span></div>
+  <input class="slider" id="bright" type="range" min="5" max="100" step="1" value="100">
+
+  <div class="sec">Night</div>
+  <div class="switchrow" style="margin-top:12px"><span>Dim when nobody is around</span><button class="switch" id="swNight"></button></div>
+  <div class="label">Dim after</div>
+  <div class="seg" data-key="nightAfter">
+    <button data-v="5">5 min</button><button data-v="15">15 min</button><button data-v="30">30 min</button>
+  </div>
+  <p id="nightNote">Uses the sensor on the front of the photo frame. The screen goes very dim and shows a quiet clock, and everything else rests.</p>
+
+  <div class="footer"><b>Made by Nayam Amarshe</b> &#10084;&#65039;<br><span id="verTxt">Photo Frame</span></div>
+</div>
+
+<div id="manage" class="overlay">
+  <div class="topbar"><h2 id="manageTitle">Photos</h2>
+    <div class="right"><button class="pill" id="manageAdd">Add photos</button><button class="pill" id="manageBack">Back</button></div>
+  </div>
+  <div id="manageMount"></div>
+  <div class="footer"><b>Made by Nayam Amarshe</b> &#10084;&#65039;</div>
+</div>
+
+<div id="apps" class="overlay">
+  <div class="topbar"><h2>Apps</h2><button class="pill" id="appsBack">Back</button></div>
+  <div class="appgrid" id="appgrid"></div>
+  <div class="footer"><b>Made by Nayam Amarshe</b> &#10084;&#65039;</div>
+</div>
+
+<div id="musicui" class="overlay">
+  <div class="mu-side">
+    <button class="pill" id="muBack">&#8592; Back</button>
+    <div class="mu-qr">
+      <div class="qrbox"><canvas id="qrMusic"></canvas></div>
+      <p>Or scan this with a phone to search and play from there.</p>
+      <div class="url" id="urlMusic"></div>
+    </div>
+  </div>
+  <iframe id="muFrame" title="Music"></iframe>
+</div>
+
+<div id="qrfull" class="overlay">
+  <button class="pill backbtn" id="qrBack">&#8592; Back</button>
+  <div class="center">
+    <h1 id="qrTitle">Scan to add photos</h1>
+    <p>Open the camera on your phone and point it at this square.</p>
+    <div class="qrbox"><canvas id="qrBig"></canvas></div>
+    <div class="url" id="urlBig"></div>
+  </div>
+</div>
+
+<div id="cropbar">
+  <div class="hint" id="cropHint">Drag the photo to choose what is shown</div>
+  <div class="zoomrow"><span>&#x2212;</span><input class="slider" type="range" id="zoom" min="1" max="3" step="0.01" value="1"><span>+</span></div>
+  <div class="row2">
+    <button class="btn" id="cropCancel">Cancel</button>
+    <button class="btn" id="cropReset">Reset</button>
+    <button class="btn primary" id="cropSave">Save</button>
+  </div>
+</div>
+
+<div id="wifi" class="overlay">
+  <div class="topbar"><h2>Wi-Fi</h2>
+    <div class="right"><button class="switch" id="swWifi"></button><button class="pill" id="wifiBack">Back</button></div>
+  </div>
+  <div id="wifiStatus"></div>
+  <div id="wifiList"></div>
+  <div class="footer"><b>Made by Nayam Amarshe</b> &#10084;&#65039;</div>
+</div>
+
+<div id="bt" class="overlay">
+  <div class="topbar"><h2>Bluetooth</h2>
+    <div class="right"><button class="switch" id="swBt"></button><button class="pill" id="btBack">Back</button></div>
+  </div>
+  <div id="btStatus"></div>
+  <div id="btList"></div>
+  <div class="footer"><b>Made by Nayam Amarshe</b> &#10084;&#65039;</div>
+</div>
+
+<div id="wifiPw">
+  <div class="card">
+    <h3 id="pwTitle">Join network</h3>
+    <p>Type the Wi-Fi password.</p>
+    <div class="field">
+      <input id="pwInput" type="password" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Password">
+      <button id="pwShow">Show</button>
+    </div>
+    <div class="row2"><button class="btn" id="pwCancel">Cancel</button><button class="btn primary" id="pwGo">Connect</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/static/qrcode.js"></script>
+<script src="/static/manage.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $('stage');
+
+  // ---------- settings (saved on the tablet) ----------
+  // Fit / Fill is decided per photo (see "This photo shows"), separately for wide and tall screens.
+  var S = { bg: 'blur', clock: true, clockStyle: 'card', interval: 20, play: 'order', nightMode: false, nightAfter: 15,
+            brightness: 100, crops: {}, fits: {} };
+  var DEFAULT_CROP = { x: 0.5, y: 0.5, z: 1 };
+
+  function saveSettings() {
+    var x = new XMLHttpRequest();
+    x.open('POST', '/api/settings');
+    x.send(JSON.stringify(S));
+  }
+
+  // ---------- state ----------
+  var photos = [];
+  var current = null;
+  var history = [];
+  var timer = null;
+  var panelOpen = false;
+  // keep the page from ever scrolling sideways (the settings panel waits just outside the screen)
+  document.addEventListener('scroll', function () { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }, true);
+  var cropMode = false;
+  var crop = null;
+  var siteUrl = '';
+  var slides = [makeSlide($('s0')), makeSlide($('s1'))];
+  var front = 0;
+
+  function makeSlide(el) {
+    return { el: el, bg: el.querySelector('.bg'), fg: el.querySelector('.fg'), name: null, nw: 0, nh: 0 };
+  }
+
+  // ---------- which photo is next ----------
+  // "In my order": follow the order arranged in Manage photos.
+  // "Shuffle": half the time the newest photo (so a fresh one shows up fast), otherwise a random one.
+  // Never the same photo twice in a row.
+  function pickNextPhoto(list, lastShown) {
+    if (list.length === 1) return list[0];
+    if (S.play !== 'shuffle') return list[(list.indexOf(lastShown) + 1) % list.length];
+    var newest = list[list.length - 1];
+    if (newest !== lastShown && Math.random() < 0.5) return newest;
+    var others = list.filter(function (p) { return p !== lastShown; });
+    return others[Math.floor(Math.random() * others.length)];
+  }
+
+  // ---------- layout of one photo ----------
+  // Wide or tall? Crops and Fit/Fill are remembered separately for each.
+  function orient() { return stage.clientWidth >= stage.clientHeight ? 'land' : 'port'; }
+  // A saved crop is {land: {x,y,z}, port: {x,y,z}}. Older saves were a single {x,y,z} for both.
+  function savedCrop(name) {
+    var c = S.crops[name];
+    if (!c) return null;
+    if (c.land || c.port) return c[orient()] || null;
+    return c;
+  }
+  function setSavedCrop(name, c) {
+    var o = orient(), cur = S.crops[name], both = {};
+    if (cur && (cur.land || cur.port)) { both.land = cur.land; both.port = cur.port; }
+    else if (cur) { both.land = cur; both.port = cur; }
+    if (c) both[o] = { x: c.x, y: c.y, z: c.z }; else delete both[o];
+    if (!both.land && !both.port) delete S.crops[name]; else S.crops[name] = both;
+    // Saving a crop means "show it filled", so the photo's own choice becomes Fill too.
+    if (c) setPhotoFit(name, 'fill');
+  }
+  function cropFor(name) {
+    if (cropMode && name === current && crop) return crop;
+    return savedCrop(name) || DEFAULT_CROP;
+  }
+  // A photo's own choice, for the way the tablet is held now: 'fit', 'fill', or null (use the default).
+  function photoFit(name) {
+    var f = S.fits[name];
+    return (f && f[orient()]) || null;
+  }
+  function setPhotoFit(name, v) {
+    var o = orient(), f = S.fits[name] || {};
+    if (v) f[o] = v; else delete f[o];
+    if (f.land || f.port) S.fits[name] = f; else delete S.fits[name];
+  }
+  function dimsOf(name) {
+    for (var i = 0; i < 2; i++) if (slides[i].name === name && slides[i].nw) return slides[i];
+    return null;
+  }
+  // "Auto": fill the screen only when the photo is almost the same shape as the screen,
+  // so a tall photo on a wide screen is shown whole (with the blurred background), not chopped.
+  function smartFill(name) {
+    var d = dimsOf(name);
+    if (!d) return false;
+    var r = (d.nw / d.nh) / (stage.clientWidth / stage.clientHeight);
+    return r > 0.75 && r < 1.33;
+  }
+  // What wins: the crop editor, then this photo's own choice, then a saved crop, then Auto.
+  function isFilled(name) {
+    if (cropMode && name === current) return true;
+    var own = photoFit(name);
+    if (own) return own === 'fill';
+    if (savedCrop(name)) return true;
+    return smartFill(name);
+  }
+  // Where the photo sits when it fills the screen. Always covers the whole screen.
+  function rect(nw, nh, W, H, c) {
+    var s = Math.max(W / nw, H / nh) * c.z;
+    var w = nw * s, h = nh * s;
+    var l = W / 2 - c.x * w, t = H / 2 - c.y * h;
+    l = Math.min(0, Math.max(W - w, l));
+    t = Math.min(0, Math.max(H - h, t));
+    return { l: l, t: t, w: w, h: h };
+  }
+  function layout(s) {
+    if (!s.name || !s.nw) return;
+    if (s === slides[front] && !cropMode) scheduleAdapt();
+    var fg = s.fg;
+    if (isFilled(s.name)) {
+      var W = stage.clientWidth, H = stage.clientHeight;
+      var r = rect(s.nw, s.nh, W, H, cropFor(s.name));
+      fg.style.objectFit = 'fill';
+      fg.style.left = r.l + 'px'; fg.style.top = r.t + 'px';
+      fg.style.width = r.w + 'px'; fg.style.height = r.h + 'px';
+    } else {
+      fg.style.objectFit = 'contain';
+      fg.style.left = '0'; fg.style.top = '0'; fg.style.width = '100%'; fg.style.height = '100%';
+    }
+  }
+  function layoutAll() { layout(slides[0]); layout(slides[1]); }
+
+  // ---------- showing photos ----------
+  function showPhoto(name) {
+    var fgLoader = new Image();
+    fgLoader.onload = function () {
+      var bgLoader = new Image();
+      var go = function () {
+        var back = slides[1 - front], old = slides[front];
+        back.name = name; back.nw = fgLoader.naturalWidth; back.nh = fgLoader.naturalHeight;
+        back.fg.src = '/photos/' + name;
+        back.bg.src = '/bg/' + name;
+        layout(back);
+        var dx = 70 * slideDir;
+        back.el.style.transition = 'none'; back.el.style.transform = 'translateX(' + dx + 'px)';
+        void back.el.offsetWidth;
+        back.el.style.transition = ''; back.el.style.transform = '';
+        back.el.classList.add('show');
+        old.el.style.transform = 'translateX(' + (-dx) + 'px)';
+        old.el.classList.remove('show');
+        front = 1 - front;
+        current = name; if (panelOpen) setGlass();
+        lastPix = { fg: fgLoader, bg: bgLoader };
+        scheduleAdapt();
+        updateCount();
+        schedule();
+      };
+      bgLoader.onload = go; bgLoader.onerror = go;
+      bgLoader.src = '/bg/' + name;
+    };
+    fgLoader.onerror = function () { current = name; schedule(); };
+    fgLoader.src = '/photos/' + name;
+  }
+
+  var slideDir = 1;
+  function next() {
+    slideDir = 1;
+    if (!photos.length) return;
+    var name = pickNextPhoto(photos, current);
+    if (!name) return;
+    if (current) { history.push(current); if (history.length > 60) history.shift(); }
+    showPhoto(name);
+  }
+  function prev() {
+    slideDir = -1;
+    if (!photos.length) return;
+    if (S.play !== 'shuffle') {
+      var j = photos.indexOf(current);
+      showPhoto(photos[(j - 1 + photos.length) % photos.length]);
+      return;
+    }
+    var name = null;
+    while (history.length && !name) {
+      var h = history.pop();
+      if (photos.indexOf(h) >= 0 && h !== current) name = h;
+    }
+    if (!name) {
+      var i = photos.indexOf(current);
+      name = photos[(i - 1 + photos.length) % photos.length];
+    }
+    showPhoto(name);
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (paused()) return;
+    timer = setTimeout(next, S.interval * 1000);
+  }
+
+  // ---------- talking to the tablet's server ----------
+  function get(url, cb) {
+    var x = new XMLHttpRequest();
+    x.open('GET', url);
+    x.onload = function () { try { cb(JSON.parse(x.responseText)); } catch (e) {} };
+    x.send();
+  }
+  function post(url, cb) {
+    var x = new XMLHttpRequest();
+    x.open('POST', url);
+    x.onload = function () { if (cb) cb(x.status === 200); };
+    x.onerror = function () { if (cb) cb(false); };
+    x.send();
+  }
+
+  function refresh() {
+    get('/api/photos', function (list) {
+      var had = photos.length;
+      photos = list;
+      $('empty').style.display = list.length ? 'none' : 'flex';
+      if (!had && list.length && !current) next();
+      updateCount();
+    });
+    get('/api/info', function (info) {
+      var url = 'http://' + info.ip + ':' + info.port + '/dashboard';
+      if (url !== siteUrl) {
+        siteUrl = url;
+        $('urlEmpty').textContent = url.replace('http://', '');
+        drawQR($('qrEmpty'), url, 260);
+        drawQR($('qrPanel'), url, 110);
+      }
+    });
+  }
+
+  // ---------- QR code ----------
+  function drawQR(canvas, text, size) {
+    var qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    var n = qr.getModuleCount();
+    var cell = Math.max(1, Math.floor(size / n));
+    canvas.width = canvas.height = cell * n;
+    var g = canvas.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.fillStyle = '#111';
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) {
+      if (qr.isDark(r, c)) g.fillRect(c * cell, r * cell, cell, cell);
+    }
+  }
+
+  // ---------- settings panel ----------
+  function applySettings() {
+    document.body.classList.toggle('bg-black', S.bg === 'black');
+    document.body.classList.toggle('no-clock', !S.clock);
+    var cs = (S.clockStyle === 'lock' || S.clockStyle === 'stack') ? S.clockStyle : 'card';
+    document.body.classList.remove('clock-card', 'clock-lock', 'clock-stack');
+    document.body.classList.add('clock-' + cs);
+    scheduleAdapt();
+    var segs = document.querySelectorAll('.seg');
+    for (var i = 0; i < segs.length; i++) {
+      var key = segs[i].getAttribute('data-key');
+      var btns = segs[i].querySelectorAll('button');
+      for (var j = 0; j < btns.length; j++) {
+        btns[j].classList.toggle('on', btns[j].getAttribute('data-v') === String(S[key]));
+      }
+    }
+    $('swClock').classList.toggle('on', !!S.clock);
+    var br = S.brightness || 100;
+    $('bright').value = br;
+    $('brightVal').textContent = br + '%';
+    applyBrightness();
+    $('swNight').classList.toggle('on', !!S.nightMode);
+    layoutAll();
+  }
+
+  function updateCount() {
+    var i = photos.indexOf(current);
+    $('count').textContent = current && i >= 0 ? 'Photo ' + (i + 1) + ' of ' + photos.length : photos.length + ' photos';
+  }
+
+  function setGlass() { if (current) $('gimg').style.backgroundImage = 'url("/bg/' + encodeURIComponent(current) + '")'; }
+  function openPanel() { panelOpen = true; setGlass(); $('panelGlass').classList.add('open'); resetDeleteButton(); refreshPhotoFit(); refreshOverlayNotice(); $('panel').classList.add('open'); clearTimeout(timer); }
+  function closePanel() { panelOpen = false; $('panelGlass').classList.remove('open'); $('panel').classList.remove('open'); schedule(); }
+
+  var segsEls = document.querySelectorAll('.seg button');
+  for (var si = 0; si < segsEls.length; si++) {
+    segsEls[si].addEventListener('click', function () {
+      var key = this.parentNode.getAttribute('data-key');
+      var v = this.getAttribute('data-v');
+      S[key] = (key === 'interval' || key === 'nightAfter') ? parseInt(v, 10) : v;
+      applySettings(); saveSettings();
+    });
+  }
+  $('swClock').addEventListener('click', function () { S.clock = !S.clock; applySettings(); saveSettings(); });
+  $('swNight').addEventListener('click', function () { if (readIdle() < 0) return; S.nightMode = !S.nightMode; applySettings(); saveSettings(); nightCheck(); });
+  $('closePanel').addEventListener('click', closePanel);
+
+  // Fit / Fill for just THIS photo (saved for the way the tablet is held right now)
+  function refreshPhotoFit() {
+    var own = current ? photoFit(current) : null;
+    var btns = $('photoFitSeg').querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      var v = btns[i].getAttribute('data-v');
+      btns[i].classList.toggle('on', v === (own || 'auto'));
+    }
+  }
+  var pfBtns = $('photoFitSeg').querySelectorAll('button');
+  for (var pi = 0; pi < pfBtns.length; pi++) {
+    pfBtns[pi].addEventListener('click', function () {
+      if (!current) return;
+      var v = this.getAttribute('data-v');
+      setPhotoFit(current, v === 'auto' ? null : v);
+      refreshPhotoFit(); layoutAll(); saveSettings();
+    });
+  }
+
+  // brightness of this tablet's screen (only while the frame is on screen)
+  $('bright').addEventListener('input', function () {
+    S.brightness = parseInt(this.value, 10);
+    $('brightVal').textContent = S.brightness + '%';
+    if (B && B.setBrightness) B.setBrightness(S.brightness);
+  });
+  $('bright').addEventListener('change', saveSettings);
+
+  // delete needs two taps so nobody removes a photo by accident
+  var delTimer = null;
+  function resetDeleteButton() {
+    clearTimeout(delTimer);
+    var b = $('btnDelete'); b.textContent = 'Delete'; b.classList.remove('confirm');
+  }
+  $('btnDelete').addEventListener('click', function () {
+    var b = this;
+    if (!b.classList.contains('confirm')) {
+      b.textContent = 'Tap again to delete'; b.classList.add('confirm');
+      delTimer = setTimeout(resetDeleteButton, 3500);
+      return;
+    }
+    resetDeleteButton();
+    var gone = current;
+    if (!gone) return;
+    post('/api/delete?name=' + encodeURIComponent(gone), function (ok) {
+      if (!ok) { toast('Could not delete'); return; }
+      delete S.crops[gone]; delete S.fits[gone]; saveSettings();
+      photos = photos.filter(function (p) { return p !== gone; });
+      history = history.filter(function (p) { return p !== gone; });
+      current = null;
+      closePanel();
+      if (photos.length) next(); else { $('empty').style.display = 'flex'; slides[0].el.classList.remove('show'); slides[1].el.classList.remove('show'); }
+      toast('Photo deleted');
+    });
+  });
+
+  // ---------- crop editor ----------
+  function startCrop() {
+    if (!current) return;
+    var c = savedCrop(current) || DEFAULT_CROP;
+    $('cropHint').textContent = 'Pinch to zoom, drag to move (' +
+      (orient() === 'port' ? 'tall' : 'wide') + ' screen)';
+    crop = { x: c.x, y: c.y, z: c.z };
+    cropMode = true;
+    document.body.classList.add('cropping');
+    closePanel();
+    clearTimeout(timer);
+    $('zoom').value = crop.z;
+    $('cropbar').classList.add('open');
+    layout(slides[front]);
+  }
+  function endCrop() {
+    cropMode = false; crop = null;
+    document.body.classList.remove('cropping');
+    $('cropbar').classList.remove('open');
+    layout(slides[front]);
+    schedule();
+  }
+  function clampCrop() {
+    var s = slides[front];
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var r = rect(s.nw, s.nh, W, H, crop);
+    crop.x = (W / 2 - r.l) / r.w;
+    crop.y = (H / 2 - r.t) / r.h;
+  }
+  $('btnCrop').addEventListener('click', startCrop);
+  $('cropCancel').addEventListener('click', endCrop);
+  $('cropReset').addEventListener('click', function () {
+    crop = { x: 0.5, y: 0.5, z: 1 }; $('zoom').value = 1; layout(slides[front]);
+  });
+  $('zoom').addEventListener('input', function () {
+    crop.z = parseFloat(this.value); clampCrop(); layout(slides[front]);
+  });
+  $('cropSave').addEventListener('click', function () {
+    var same = Math.abs(crop.x - 0.5) < 0.002 && Math.abs(crop.y - 0.5) < 0.002 && crop.z <= 1.001;
+    setSavedCrop(current, same ? null : crop);
+    saveSettings();
+    endCrop();
+    toast('Crop saved');
+  });
+
+  // ---------- touch: swipe to change, tap for settings, drag to crop ----------
+  var down = null;
+  var ptrs = {};          // fingers on the screen right now
+  var pinch = null;       // set while two fingers are zooming
+  function ptrList() { var out = []; for (var k in ptrs) out.push(ptrs[k]); return out; }
+  function beginPinch() {
+    if (panelOpen) closePanel();
+    if (!cropMode) startCrop();       // pinching a photo opens the crop screen straight away
+    if (!cropMode) return;
+    var p = ptrList();
+    pinch = { d: Math.max(1, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)), z: crop.z,
+      cx: (p[0].x + p[1].x) / 2, cy: (p[0].y + p[1].y) / 2 };
+    down = null;
+  }
+  stage.addEventListener('pointerdown', function (e) {
+    ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    if (ptrList().length === 2) { beginPinch(); return; }
+    if (ptrList().length === 1) down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY };
+  });
+  stage.addEventListener('pointermove', function (e) {
+    if (ptrs[e.pointerId]) { ptrs[e.pointerId].x = e.clientX; ptrs[e.pointerId].y = e.clientY; }
+    if (pinch && cropMode) {
+      var p = ptrList();
+      if (p.length < 2) return;
+      var s = slides[front];
+      var d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      var cx = (p[0].x + p[1].x) / 2, cy = (p[0].y + p[1].y) / 2;
+      var zmin = parseFloat($('zoom').min) || 1, zmax = parseFloat($('zoom').max) || 4;
+      var r0 = rect(s.nw, s.nh, stage.clientWidth, stage.clientHeight, crop);
+      crop.x -= (cx - pinch.cx) / r0.w;      // two fingers moving together also move the photo
+      crop.y -= (cy - pinch.cy) / r0.h;
+      pinch.cx = cx; pinch.cy = cy;
+      crop.z = Math.max(zmin, Math.min(zmax, pinch.z * d / pinch.d));
+      $('zoom').value = crop.z;
+      clampCrop(); layout(s);
+      return;
+    }
+    if (!down) return;
+    if (cropMode) {
+      var s2 = slides[front];
+      var r = rect(s2.nw, s2.nh, stage.clientWidth, stage.clientHeight, crop);
+      crop.x -= (e.clientX - down.lx) / r.w;
+      crop.y -= (e.clientY - down.ly) / r.h;
+      clampCrop(); layout(s2);
+    }
+    down.lx = e.clientX; down.ly = e.clientY;
+  });
+  function release(e) {
+    if (!down) return;
+    var dx = e.clientX - down.x, dy = e.clientY - down.y;
+    down = null;
+    if (cropMode) return;
+    if (panelOpen) { if (Math.abs(dx) < 12 && Math.abs(dy) < 12) closePanel(); return; }
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) { if (dx < 0) next(); else prev(); }
+    else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) openPanel();
+  }
+  function lift(e) {
+    delete ptrs[e.pointerId];
+    if (pinch) {
+      if (ptrList().length < 2) {
+        pinch = null;
+        var left = ptrList();     // one finger still down: carry on moving the photo with it
+        down = left.length ? { x: left[0].x, y: left[0].y, lx: left[0].x, ly: left[0].y } : null;
+      }
+      return;
+    }
+    release(e);
+  }
+  stage.addEventListener('pointerup', lift);
+  stage.addEventListener('pointercancel', function (e) { delete ptrs[e.pointerId]; if (!ptrList().length) { down = null; pinch = null; } });
+  document.addEventListener('keydown', function (e) {
+    if (cropMode) return;
+    if (e.key === 'ArrowRight') next();
+    else if (e.key === 'ArrowLeft') prev();
+  });
+
+  // ---------- toast ----------
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+
+  // ---------- night: when nobody has been around for a while, dim down and rest ----------
+  var nightOn = false;
+  var lastTouch = Date.now();
+  function readIdle() {          // seconds since someone was seen in front of the tablet, or -1 when it cannot tell
+    if (typeof window.__demoIdle === 'number') return window.__demoIdle;
+    return (B && B.idleSeconds) ? B.idleSeconds() : -1;
+  }
+  function applyBrightness() {
+    if (B && B.setBrightness) B.setBrightness(nightOn ? 1 : (S.brightness || 100));
+  }
+  function setNight(on) {
+    if (nightOn === on) return;
+    nightOn = on;
+    document.body.classList.toggle('night', on);
+    applyBrightness();
+    tickClock();
+    if (on) { clearTimeout(timer); }
+    else { schedule(); scheduleAdapt(); refresh(); }
+  }
+  function nightCheck() {
+    var idle = readIdle();
+    var ok = idle >= 0;
+    $('swNight').style.opacity = ok ? '' : '.4';
+    $('nightNote').textContent = ok
+      ? 'Uses the sensor on the front of the photo frame. The screen goes very dim and shows a quiet clock, and everything else rests.'
+      : 'This photo frame has no motion sensor I can read, so night mode is not available.';
+    if (!S.nightMode || !ok) { if (nightOn) setNight(false); return; }
+    var touchAge = (typeof window.__demoIdle === 'number') ? idle : (Date.now() - lastTouch) / 1000;
+    var quiet = Math.min(idle, touchAge);                            // nobody seen, and nobody touched the screen
+    if (!nightOn && quiet >= S.nightAfter * 60) setNight(true);
+    else if (nightOn && quiet < 3) setNight(false);                  // someone is here again
+  }
+  document.addEventListener('pointerdown', function () { lastTouch = Date.now(); if (nightOn) setNight(false); }, true);
+  setInterval(nightCheck, 3000);
+
+  // ---------- clock text: light or dark, depending on the photo behind it ----------
+  var lastPix = null;                       // the photo (and its blurred copy) that is showing now
+  var adaptCanvas = document.createElement('canvas');
+  var adaptTimer = null;
+  function scheduleAdapt() { clearTimeout(adaptTimer); adaptTimer = setTimeout(adaptClock, 120); }
+  function adaptClock() {
+    var el = $('clock');
+    if (!el || !lastPix || document.body.classList.contains('no-clock')) return;
+    var s = slides[front];
+    if (nightOn || !s || !s.name || !s.nw) return;
+    var W = stage.clientWidth, H = stage.clientHeight;
+    if (!W || !H) return;
+    try {
+      var cw = 96, ch = Math.max(8, Math.round(96 * H / W)), k = cw / W;
+      adaptCanvas.width = cw; adaptCanvas.height = ch;
+      var g = adaptCanvas.getContext('2d');
+      g.fillStyle = '#000'; g.fillRect(0, 0, cw, ch);
+      var bgImg = lastPix.bg;
+      if (S.bg !== 'black' && bgImg && bgImg.naturalWidth) {
+        var sc = Math.max(cw / bgImg.naturalWidth, ch / bgImg.naturalHeight);
+        var bw = bgImg.naturalWidth * sc, bh = bgImg.naturalHeight * sc;
+        g.drawImage(bgImg, (cw - bw) / 2, (ch - bh) / 2, bw, bh);
+      }
+      var fx, fy, fw, fh;
+      if (isFilled(s.name)) {
+        var r = rect(s.nw, s.nh, W, H, cropFor(s.name));
+        fx = r.l * k; fy = r.t * k; fw = r.w * k; fh = r.h * k;
+      } else {
+        var sc2 = Math.min(cw / s.nw, ch / s.nh);
+        fw = s.nw * sc2; fh = s.nh * sc2; fx = (cw - fw) / 2; fy = (ch - fh) / 2;
+      }
+      g.drawImage(lastPix.fg, fx, fy, fw, fh);
+      var parts = ['time', 'date'];
+      for (var pi = 0; pi < parts.length; pi++) {
+        var part = $(parts[pi]);
+        var cr = part.getBoundingClientRect();
+        var x0 = Math.max(0, Math.floor(cr.left * k)), y0 = Math.max(0, Math.floor(cr.top * k));
+        var x1 = Math.min(cw, Math.ceil(cr.right * k)), y1 = Math.min(ch, Math.ceil(cr.bottom * k));
+        if (x1 <= x0 || y1 <= y0) continue;
+        var d = g.getImageData(x0, y0, x1 - x0, y1 - y0).data, sum = 0, n = 0;
+        for (var i = 0; i < d.length; i += 4) { sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; n++; }
+        part.classList.toggle('dark', n > 0 && sum / n > 140);   // light photo behind it -> dark text
+      }
+    } catch (e) { }
+  }
+
+  // ---------- clock ----------
+  function tickClock() {
+    var d = new Date();
+    var h = d.getHours() % 12 || 12;
+    var m = ('0' + d.getMinutes()).slice(-2);
+    var tt = $('time');
+    tt.querySelector('.h').textContent = h;
+    tt.querySelector('.m').textContent = m;
+    tt.querySelector('.ap').textContent = d.getHours() < 12 ? 'AM' : 'PM';
+    $('nTime').textContent = h + ':' + m;
+    $('nDate').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    $('date').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  // ---------- full-screen pop-ups ----------
+  var B = window.FrameBridge || null;   // buttons that talk to Android (only inside the tablet app)
+  function isOpen(id) { return $(id).classList.contains('open'); }
+  function openOverlay(id) { $(id).classList.add('open'); clearTimeout(timer); }
+  function closeOverlay(id) { $(id).classList.remove('open'); schedule(); }
+  function paused() { return nightOn || panelOpen || cropMode || isOpen('apps') || isOpen('qrfull') || isOpen('musicui') || isOpen('wifi') || isOpen('bt') || isOpen('manage'); }
+
+  // big QR code
+  function openQR(kind) {
+    if (!siteUrl) return;
+    var music = kind === 'music';
+    var url = music ? siteUrl.replace(/\/dashboard$/, '/music') : siteUrl;
+    var size = Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.55);
+    $('qrTitle').textContent = music ? 'Scan to play music' : 'Scan to add photos';
+    drawQR($('qrBig'), url, size);
+    $('urlBig').textContent = url.replace('http://', '');
+    openOverlay('qrfull');
+  }
+  $('qrEmptyBox').addEventListener('click', function () { openQR(); });
+  $('addbox').addEventListener('click', function () { openQR(); });
+  $('qrfull').addEventListener('click', function () { closeOverlay('qrfull'); });
+  $('emptySettings').addEventListener('click', openPanel);
+
+  // app grid
+  function openApps() {
+    var list = [];
+    if (B) { try { list = JSON.parse(B.getApps()); } catch (e) {} }
+    var grid = $('appgrid');
+    grid.innerHTML = '';
+    list.forEach(function (a) {
+      var b = document.createElement('button');
+      b.className = 'app';
+      var im = document.createElement('img');
+      im.src = '/api/icon/' + a.pkg;
+      var sp = document.createElement('span');
+      sp.textContent = a.label;
+      b.appendChild(im); b.appendChild(sp);
+      b.addEventListener('click', function () { B.launchApp(a.pkg); });
+      grid.appendChild(b);
+    });
+    openOverlay('apps');
+  }
+  $('appsBack').addEventListener('click', function () { closeOverlay('apps'); });
+
+  // Android buttons
+  if (B) {
+    $('toolApps').addEventListener('click', openApps);
+    $('toolWifi').addEventListener('click', openWifi);
+    $('toolSettings').addEventListener('click', function () { B.openAndroidSettings(); });
+    $('verTxt').textContent = 'Photo Frame · version ' + B.version();
+  } else {
+    $('tools').style.display = 'none';
+  }
+
+  // ---------- Bluetooth: pair with a speaker, connect, disconnect ----------
+  var btTimer = null, btKey = '';
+  var ICON_SPEAKER = '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+  var ICON_DEVICE = '<svg viewBox="0 0 24 24"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>';
+
+  function openBt() {
+    if (!B) return;
+    btKey = '';
+    openOverlay('bt');
+    btRefresh(true);
+    clearInterval(btTimer);
+    btTimer = setInterval(function () { btRefresh(false); }, 2000);
+  }
+  function closeBt() { clearInterval(btTimer); closeOverlay('bt'); }
+  function btRefresh(scan) {
+    var st = wifiParse(B.btStatus());
+    if (scan && st.enabled) B.btScan();
+    $('swBt').classList.toggle('on', !!st.enabled);
+    renderBt(st);
+  }
+
+  function btRow(d) {
+    var row = document.createElement('div');
+    row.className = 'btrow' + (d.connected ? ' on' : '');
+    var main = document.createElement('button');
+    main.className = 'main';
+    main.innerHTML = d.speaker ? ICON_SPEAKER : ICON_DEVICE;
+    var name = document.createElement('span');
+    name.className = 'name'; name.textContent = d.name;
+    main.appendChild(name);
+    var tagText = d.connected ? 'Connected' : (d.bonding ? 'Pairing…' : (d.bonded ? 'Paired' : ''));
+    if (tagText) {
+      var tag = document.createElement('span');
+      tag.className = 'tag'; tag.textContent = tagText;
+      main.appendChild(tag);
+    }
+    main.addEventListener('click', function () { if (!d.connected) btJoin(d); });
+    row.appendChild(main);
+    if (d.connected) {
+      var x = document.createElement('button');
+      x.className = 'small'; x.textContent = 'Disconnect';
+      x.addEventListener('click', function () {
+        var r = String(B.btDisconnect(d.address));
+        toast(r === 'ok' ? 'Disconnected' : r.replace('error:', ''));
+        setTimeout(function () { btKey = ''; btRefresh(false); }, 1200);
+      });
+      row.appendChild(x);
+    } else if (d.bonded) {
+      var f = document.createElement('button');
+      f.className = 'small'; f.textContent = 'Forget';
+      f.addEventListener('click', function () {
+        B.btForget(d.address); toast('Forgot ' + d.name);
+        setTimeout(function () { btKey = ''; btRefresh(false); }, 1000);
+      });
+      row.appendChild(f);
+    }
+    return row;
+  }
+
+  function renderBt(st) {
+    var key = JSON.stringify(st);
+    if (key === btKey) return;
+    btKey = key;
+    var s = $('btStatus'), l = $('btList');
+    s.innerHTML = ''; l.innerHTML = '';
+    if (!st.supported) { notice(s, 'This photo frame does not have Bluetooth.'); return; }
+    if (!st.enabled) { notice(s, 'Bluetooth is turned off. Use the switch at the top to turn it on.'); return; }
+
+    var devices = st.devices || [];
+    var conn = null;
+    devices.forEach(function (d) { if (d.connected) conn = d; });
+    var box = document.createElement('div');
+    box.className = 'wstatus';
+    var left = document.createElement('div');
+    var big = document.createElement('div'); big.className = 'big';
+    var small = document.createElement('div'); small.className = 'small';
+    if (conn) { big.textContent = 'Playing sound on ' + conn.name; small.textContent = 'Music and videos now come out of this speaker.'; }
+    else { big.textContent = 'No speaker connected'; small.textContent = 'Turn your speaker on and hold its Bluetooth button until it blinks. Then tap it below.'; }
+    left.appendChild(big); left.appendChild(small); box.appendChild(left);
+    s.appendChild(box);
+    if (st.message) notice(s, st.message);
+
+    function sortFn(a, b) { return (b.speaker ? 1 : 0) - (a.speaker ? 1 : 0) || a.name.localeCompare(b.name); }
+    var mine = devices.filter(function (d) { return d.bonded; }).sort(sortFn);
+    var nearby = devices.filter(function (d) { return !d.bonded; }).sort(sortFn);
+
+    if (mine.length) {
+      var h1 = document.createElement('div'); h1.className = 'btsect'; h1.textContent = 'Your devices'; l.appendChild(h1);
+      mine.forEach(function (d) { l.appendChild(btRow(d)); });
+    }
+    var h2 = document.createElement('div'); h2.className = 'btsect';
+    h2.textContent = st.scanning ? 'Nearby · searching…' : 'Nearby';
+    l.appendChild(h2);
+    nearby.forEach(function (d) { l.appendChild(btRow(d)); });
+    if (!nearby.length && !st.scanning) notice(l, 'No new devices found.');
+    if (!st.scanning) {
+      var again = document.createElement('button');
+      again.className = 'pill'; again.textContent = 'Search again';
+      again.addEventListener('click', function () { btKey = ''; B.btScan(); setTimeout(function () { btRefresh(false); }, 400); });
+      l.appendChild(again);
+    }
+  }
+
+  function btJoin(d) {
+    var r = String(B.btConnect(d.address));
+    if (r.indexOf('error:') === 0) { toast(r.slice(6)); return; }
+    toast(r === 'pairing' ? 'Pairing with ' + d.name + '… if Android asks, tap Pair.' : 'Connecting to ' + d.name + '…');
+    var tries = 0;
+    var t = setInterval(function () {
+      tries++;
+      var st = wifiParse(B.btStatus());
+      var me = null;
+      (st.devices || []).forEach(function (x) { if (x.address === d.address) me = x; });
+      if (me && me.connected) { clearInterval(t); toast('Connected to ' + d.name); btKey = ''; btRefresh(false); }
+      else if (tries >= 30) { clearInterval(t); toast('Could not connect. Try pairing mode again.'); btKey = ''; btRefresh(false); }
+    }, 1000);
+  }
+
+  $('swBt').addEventListener('click', function () {
+    var st = wifiParse(B.btStatus());
+    B.btSetEnabled(!st.enabled);
+    setTimeout(function () { btKey = ''; btRefresh(!st.enabled); }, 1800);
+  });
+  $('btBack').addEventListener('click', closeBt);
+  $('toolBt').addEventListener('click', openBt);
+
+  // The floating "Back to Photo Frame" button needs "draw over other apps". Ask once, if missing.
+  function refreshOverlayNotice() {
+    if (!B || !B.canOverlay) return;
+    $('ovNotice').style.display = B.canOverlay() ? 'none' : 'block';
+  }
+  $('ovAllow').addEventListener('click', function () { B.requestOverlay(); });
+
+  // Press the credits 4 times to turn the little Back / Home bar on or off
+  var credTaps = 0, credTimer = null;
+  var feet = document.querySelectorAll('.footer');
+  for (var fi = 0; fi < feet.length; fi++) {
+    feet[fi].addEventListener('click', function () {
+      credTaps++;
+      clearTimeout(credTimer);
+      credTimer = setTimeout(function () { credTaps = 0; }, 2000);
+      if (credTaps >= 4) {
+        credTaps = 0;
+        var B2 = window.FrameBridge;
+        if (!B2 || !B2.toggleNav) return;
+        var r = String(B2.toggleNav());
+        toast(r === 'on' ? 'Navigation bar on' : r === 'off' ? 'Navigation bar off' : 'Turn on "Photo Frame navigation" in this list');
+      }
+    });
+  }
+
+  // Music: phones scan a code, search YouTube and play on the frame
+  $('toolMusic').style.display = '';
+  $('toolMusic').addEventListener('click', function () { closePanel(); openMusic(); });
+  function openMusic() {
+    var url = siteUrl.replace(/\/dashboard$/, '/music');
+    if (!$('muFrame').getAttribute('src')) $('muFrame').setAttribute('src', '/music');
+    var size = window.innerHeight > window.innerWidth ? 96 : 200;
+    if (siteUrl) { drawQR($('qrMusic'), url, size); $('urlMusic').textContent = url.replace('http://', ''); }
+    openOverlay('musicui');
+  }
+  $('muBack').addEventListener('click', function () { closeOverlay('musicui'); get('/api/music/state', drawMini); });
+
+  // ---------- music bar at the bottom ----------
+  var PLAYI = '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>';
+  var PAUSEI = '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
+  function mm(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  function drawMini(m) {
+    var t = m && m.track;
+    $('mini').classList.toggle('show', !!t);
+    document.body.classList.toggle('music-on', !!t);
+    if (!t) { $('miniVol').classList.remove('show'); return; }
+    if ($('miniImg').getAttribute('data-id') !== t.id) { $('miniImg').src = t.thumb; $('miniImg').setAttribute('data-id', t.id); }
+    $('miniTitle').textContent = t.title;
+    $('miniSub').textContent = m.message ? m.message : m.loading ? 'Loading…' : t.channel + ' · ' + mm(m.pos) + ' / ' + mm(m.dur);
+    $('miniPlay').innerHTML = m.playing ? PAUSEI : PLAYI;
+    if (!volDrag && m.volume !== undefined) $('miniVolSlider').value = m.volume;
+    $('miniBoost').classList.toggle('on', !!m.boost);
+    $('miniProg').style.width = (m.dur > 0 ? Math.min(100, m.pos / m.dur * 100) : 0) + '%';
+  }
+  function musicCmd(c) {
+    var x = new XMLHttpRequest();
+    x.open('POST', '/api/music/cmd?c=' + c);
+    x.onload = function () { try { drawMini(JSON.parse(x.responseText)); } catch (e) {} };
+    x.send('');
+  }
+  // volume: the tablet's own music volume (also works for a Bluetooth speaker)
+  var volTimer = null, volDrag = false;
+  function showVol() { $('miniVol').classList.add('show'); clearTimeout(volTimer); volTimer = setTimeout(function () { $('miniVol').classList.remove('show'); }, 4000); }
+  $('miniVolBtn').addEventListener('click', function () {
+    if ($('miniVol').classList.contains('show')) { $('miniVol').classList.remove('show'); } else { showVol(); }
+  });
+  var volSent = 0;
+  $('miniVolSlider').addEventListener('input', function () {
+    volDrag = true; showVol();
+    var now = Date.now(); if (now - volSent < 120) return; volSent = now;
+    var x = new XMLHttpRequest(); x.open('POST', '/api/music/volume?v=' + this.value); x.send('');
+  });
+  $('miniVolSlider').addEventListener('change', function () {
+    var x = new XMLHttpRequest(); x.open('POST', '/api/music/volume?v=' + this.value); x.onload = function () { volDrag = false; }; x.send('');
+  });
+  $('miniBoost').addEventListener('click', function () {
+    showVol();
+    var on = !this.classList.contains('on'); this.classList.toggle('on', on);
+    var x = new XMLHttpRequest(); x.open('POST', '/api/music/boost?on=' + (on ? 1 : 0)); x.send('');
+  });
+  $('miniPlay').addEventListener('click', function () { musicCmd('toggle'); });
+  $('miniNext').addEventListener('click', function () { musicCmd('next'); });
+  $('miniPrev').addEventListener('click', function () { musicCmd('prev'); });
+  $('miniStop').addEventListener('click', function () { musicCmd('stop'); });
+  get('/api/music/state', drawMini);
+  (function pollMusic() {          // quick while a song is on, slow when nothing is happening
+    if (!nightOn || $('mini').classList.contains('show')) get('/api/music/state', drawMini);
+    setTimeout(pollMusic, nightOn ? 6000 : ($('mini').classList.contains('show') || isOpen('musicui') ? 1500 : 5000));
+  })();
+
+  // ---------- Manage photos: select, rearrange, delete ----------
+  var pm = null;
+  function setManageTitle() { $('manageTitle').textContent = 'Photos' + (photos.length ? ' (' + photos.length + ')' : ''); }
+  function openManage() {
+    if (!pm) {
+      pm = PhotoManager.mount($('manageMount'), {
+        scroller: $('manage'),
+        min: 150,
+        toast: toast,
+        onShow: function (name) { closeOverlay('manage'); closePanel(); showNow(name); },
+        onChange: listChanged
+      });
+    } else {
+      pm.refresh();
+    }
+    setManageTitle();
+    openOverlay('manage');
+  }
+  function closeManage() { closeOverlay('manage'); }
+  // The family changed the list (moved or deleted photos): keep the slideshow in step.
+  function listChanged(list) {
+    photos = list.slice();
+    history = history.filter(function (p) { return photos.indexOf(p) >= 0; });
+    setManageTitle();
+    updateCount();
+    if (!photos.length) {
+      current = null;
+      $('empty').style.display = 'flex';
+      slides[0].el.classList.remove('show');
+      slides[1].el.classList.remove('show');
+    } else if (current && photos.indexOf(current) < 0) {
+      current = null;
+      next();
+    }
+  }
+  function showNow(name) {
+    if (current) { history.push(current); }
+    showPhoto(name);
+  }
+  $('btnManage').addEventListener('click', openManage);
+  $('manageAdd').addEventListener('click', function () { openQR(); });
+  $('manageBack').addEventListener('click', closeManage);
+
+  // ---------- Wi-Fi: pick a network, type the password, connect or disconnect ----------
+  var wifiTimer = null, wifiScanAt = 0, wifiKey = '', wifiJoining = null;
+  function wifiParse(s) { try { return JSON.parse(s); } catch (e) { return {}; } }
+
+  function openWifi() {
+    if (!B) return;
+    wifiKey = '';
+    openOverlay('wifi');
+    wifiRefresh(true);
+    clearInterval(wifiTimer);
+    wifiTimer = setInterval(function () { wifiRefresh(false); }, 2500);
+  }
+  function closeWifi() {
+    clearInterval(wifiTimer);
+    $('wifiPw').classList.remove('open');
+    closeOverlay('wifi');
+  }
+  function wifiRefresh(forceScan) {
+    var st = wifiParse(B.wifiStatus());
+    var res = wifiParse(B.wifiResults());
+    if (forceScan || Date.now() - wifiScanAt > 7000) { B.wifiScan(); wifiScanAt = Date.now(); }
+    $('swWifi').classList.toggle('on', !!st.enabled);
+    renderWifi(st, res);
+  }
+
+  function notice(parent, text, label, fn) {
+    var box = document.createElement('div');
+    box.className = 'notice';
+    box.appendChild(document.createTextNode(text));
+    if (label) {
+      box.appendChild(document.createElement('br'));
+      var b = document.createElement('button');
+      b.className = 'pill'; b.textContent = label;
+      b.addEventListener('click', fn);
+      box.appendChild(b);
+    }
+    parent.appendChild(box);
+  }
+
+  function renderWifi(st, res) {
+    var key = JSON.stringify([st, res]);
+    if (key === wifiKey) return;
+    wifiKey = key;
+
+    var s = $('wifiStatus');
+    s.innerHTML = '';
+    if (!st.enabled) {
+      notice(s, 'Wi-Fi is turned off. Use the switch at the top to turn it on.');
+    } else {
+      var box = document.createElement('div');
+      box.className = 'wstatus';
+      var left = document.createElement('div');
+      var big = document.createElement('div'); big.className = 'big';
+      var small = document.createElement('div'); small.className = 'small';
+      if (st.connected) {
+        big.textContent = 'Connected to ' + st.ssid;
+        small.textContent = st.ip ? 'Frame address: ' + st.ip : '';
+      } else {
+        big.textContent = 'Not connected';
+        small.textContent = 'Pick a network below.';
+      }
+      left.appendChild(big); left.appendChild(small); box.appendChild(left);
+      if (st.connected) {
+        var d = document.createElement('button');
+        d.className = 'pill'; d.textContent = 'Disconnect';
+        d.addEventListener('click', function () {
+          B.wifiDisconnect(); toast('Disconnected');
+          setTimeout(function () { wifiKey = ''; wifiRefresh(false); }, 800);
+        });
+        box.appendChild(d);
+      }
+      s.appendChild(box);
+    }
+
+    var l = $('wifiList');
+    l.innerHTML = '';
+    if (!st.enabled) return;
+    if (!res.perm) {
+      notice(l, 'To show nearby networks, Android needs to let this app see your rough location. It is only used to list Wi-Fi.', 'Allow', function () { B.requestLocation(); });
+      return;
+    }
+    if (!res.locationOn) {
+      notice(l, 'Turn on Location so Android can list Wi-Fi networks. You only need to do this once.', 'Open Location settings', function () { B.openLocationSettings(); });
+      return;
+    }
+    if (!res.list || !res.list.length) { notice(l, 'Looking for networks…'); return; }
+
+    res.list.forEach(function (n) {
+      var b = document.createElement('button');
+      b.className = 'net' + (n.connected ? ' on' : '');
+      var bars = '';
+      for (var k = 1; k <= 4; k++) bars += '<i' + (n.level >= k ? ' class="on"' : '') + '></i>';
+      b.innerHTML = '<span class="sig">' + bars + '</span>';
+      var name = document.createElement('span');
+      name.className = 'name'; name.textContent = n.ssid;
+      b.appendChild(name);
+      if (n.connected || n.saved) {
+        var tag = document.createElement('span');
+        tag.className = 'tag'; tag.textContent = n.connected ? 'Connected' : 'Saved';
+        b.appendChild(tag);
+      }
+      if (n.secured) {
+        var lock = document.createElement('span');
+        lock.innerHTML = '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+        b.appendChild(lock);
+      }
+      b.addEventListener('click', function () { wifiPick(n); });
+      l.appendChild(b);
+    });
+  }
+
+  function wifiPick(n) {
+    if (n.connected) return;
+    if (n.eap) { toast('Work or school Wi-Fi is not supported here'); return; }
+    if (n.secured && !n.saved) askPassword(n.ssid); else joinWifi(n.ssid, '');
+  }
+
+  function askPassword(ssid) {
+    wifiJoining = ssid;
+    $('pwTitle').textContent = 'Join “' + ssid + '”';
+    $('pwInput').value = '';
+    $('pwInput').type = 'password';
+    $('pwShow').textContent = 'Show';
+    $('wifiPw').classList.add('open');
+    setTimeout(function () { $('pwInput').focus(); }, 150);
+  }
+  function submitPassword() {
+    var pw = $('pwInput').value;
+    if (!pw) { toast('Type the password first'); return; }
+    var ssid = wifiJoining;
+    $('wifiPw').classList.remove('open');
+    joinWifi(ssid, pw);
+  }
+  $('pwGo').addEventListener('click', submitPassword);
+  $('pwCancel').addEventListener('click', function () { $('wifiPw').classList.remove('open'); });
+  $('pwShow').addEventListener('click', function () {
+    var i = $('pwInput'), show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    this.textContent = show ? 'Hide' : 'Show';
+  });
+  $('pwInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPassword(); });
+
+  function joinWifi(ssid, pw) {
+    var r = String(B.wifiConnect(ssid, pw));
+    if (r !== 'ok') { toast(r.indexOf('error:') === 0 ? r.slice(6) : 'Could not connect'); return; }
+    toast('Connecting to ' + ssid + '…');
+    var tries = 0;
+    var t = setInterval(function () {
+      tries++;
+      var st = wifiParse(B.wifiStatus());
+      if (st.connected && st.ssid === ssid) {
+        clearInterval(t); toast('Connected to ' + ssid); wifiKey = ''; wifiRefresh(false);
+      } else if (tries >= 25) {
+        clearInterval(t); toast('Could not connect. Check the password.'); wifiKey = ''; wifiRefresh(false);
+      }
+    }, 1000);
+  }
+
+  $('swWifi').addEventListener('click', function () {
+    var st = wifiParse(B.wifiStatus());
+    B.wifiSetEnabled(!st.enabled);
+    setTimeout(function () { wifiKey = ''; wifiRefresh(false); }, 700);
+  });
+  $('wifiBack').addEventListener('click', closeWifi);
+
+  // Android's Back and Home buttons close pop-ups. They never close the frame.
+  function closeEverything() {
+    if ($('wifiPw').classList.contains('open')) $('wifiPw').classList.remove('open');
+    if (isOpen('wifi')) closeWifi();
+    if (isOpen('bt')) closeBt();
+    if (isOpen('qrfull')) closeOverlay('qrfull');
+    if (isOpen('musicui')) closeOverlay('musicui');
+    if (isOpen('apps')) closeOverlay('apps');
+    if (isOpen('manage')) closeManage();
+    if (cropMode) endCrop();
+    if (panelOpen) closePanel();
+  }
+  window.__back = function () {
+    if ($('wifiPw').classList.contains('open')) $('wifiPw').classList.remove('open');
+    else if (isOpen('wifi')) closeWifi();
+    else if (isOpen('bt')) closeBt();
+    else if (isOpen('qrfull')) closeOverlay('qrfull');
+    else if (isOpen('musicui')) closeOverlay('musicui');
+    else if (isOpen('apps')) closeOverlay('apps');
+    else if (isOpen('manage')) closeManage();
+    else if (cropMode) endCrop();
+    else if (panelOpen) closePanel();
+  };
+  window.__home = closeEverything;
+
+  // turning the tablet: re-fit the photos to the new screen shape
+  window.addEventListener('resize', function () { layoutAll(); refreshPhotoFit(); });
+
+  // ---------- go ----------
+  tickClock();
+  setInterval(tickClock, 15000);
+  get('/api/settings', function (saved) {
+    for (var k in saved) if (saved.hasOwnProperty(k)) S[k] = saved[k];
+    if (!S.crops) S.crops = {};
+    if (!S.fits) S.fits = {};
+    // old versions had one global Fit/Fill setting; now it is chosen per photo
+    delete S.fit; delete S.fitLand; delete S.fitPort;
+    applySettings();
+    refresh();
+  });
+  applySettings();
+  setInterval(function () { if (!nightOn) refresh(); }, 8000);
+})();
+</script>
+</body>
+</html>

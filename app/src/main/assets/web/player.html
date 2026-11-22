@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;background:#000;height:100%;overflow:hidden}  /* no focus rings or tap flashes anywhere */
+  *, *:focus, *:focus-visible, *:active { outline: none !important; -webkit-tap-highlight-color: transparent !important; }
+  button:focus, a:focus, input:focus, select:focus, textarea:focus, [tabindex]:focus { outline: none !important; box-shadow: none; }
+</style></head>
+<body><div id="p"></div>
+<script>
+// Hidden player: only sound is used. The tablet's music bar and phones control it through MusicBridge.
+var P = null;
+function log(m) { try { console.log(m); } catch (e) {} }
+function onYouTubeIframeAPIReady() {
+  P = new YT.Player('p', {
+    width: '320', height: '180',
+    playerVars: { autoplay: 1, playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, iv_load_policy: 3, origin: location.origin },
+    events: {
+      onReady: function () { log('player ready'); try { P.setVolume(100); } catch (e) {} MusicBridge.ready(); },
+      onStateChange: function (e) { log('state ' + e.data); MusicBridge.state(e.data); },
+      onError: function (e) { log('error ' + e.data); MusicBridge.error(e.data); }
+    }
+  });
+}
+var expect = 0, adMuted = false;
+function loadId(id, secs) { expect = secs || 0; if (P) { P.loadVideoById({ videoId: id, suggestedQuality: 'tiny' }); } }
+// Safety net: if an ad still gets through, keep it silent and run it fast until the song begins.
+setInterval(function () {
+  try {
+    if (!P || !P.getDuration) return;
+    var d = P.getDuration() || 0, st = P.getPlayerState();
+    var isAd = expect > 20 && d > 0 && Math.abs(d - expect) > 8 && (st === 1 || st === 3);
+    if (isAd && !adMuted) { adMuted = true; P.mute(); try { P.setPlaybackRate(2); } catch (e) {} log('ad guard: muted'); }
+    if (!isAd && adMuted && d > 0) { adMuted = false; P.unMute(); try { P.setPlaybackRate(1); } catch (e) {} log('ad guard: back to normal'); }
+  } catch (e) {}
+}, 400);
+function pauseIt() { if (P) P.pauseVideo(); }
+function resumeIt() { if (P) P.playVideo(); }
+function stopIt() { if (P) P.stopVideo(); }
+function seekTo(s) { if (P) P.seekTo(s, true); }
+setInterval(function () {
+  try { if (P && P.getCurrentTime) MusicBridge.time(P.getCurrentTime() || 0, P.getDuration() || 0); } catch (e) {}
+}, 1000);
+var s = document.createElement('script');
+s.src = 'https://www.youtube.com/iframe_api';
+s.onerror = function () { log('YouTube script failed to load'); };
+document.head.appendChild(s);
+</script></body></html>

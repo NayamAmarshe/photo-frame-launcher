@@ -1,0 +1,20 @@
+# build output and local setup
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+.idea/
+*.iml
+
+# computer clutter
+.DS_Store
+__pycache__/
+.dev-data/
+
+# boot animation: only the scripts are kept (the zips and previews are made from them)
+bootanimation/*.zip
+bootanimation/*.gif
+bootanimation/build/
+bootanimation/stock/
